@@ -1,125 +1,56 @@
 #include <Arduino.h>
 
-constexpr uint8_t LED_PIN = 2;
-constexpr unsigned long UNIT_MS = 200;
-constexpr char MESSAGE[] = "SOS FIIA TEST";
+#include "HealthManager.h"
+#include "HealthSnapshot.h"
+#include "SerialOutput.h"
 
-struct MorseEntry {
-    char character;
-    const char* code;
-};
-
-constexpr MorseEntry MORSE_TABLE[] = {
-    {'A', ".-"},
-    {'B', "-..."},
-    {'C', "-.-."},
-    {'D', "-.."},
-    {'E', "."},
-    {'F', "..-."},
-    {'G', "--."},
-    {'H', "...."},
-    {'I', ".."},
-    {'J', ".---"},
-    {'K', "-.-"},
-    {'L', ".-.."},
-    {'M', "--"},
-    {'N', "-."},
-    {'O', "---"},
-    {'P', ".--."},
-    {'Q', "--.-"},
-    {'R', ".-."},
-    {'S', "..."},
-    {'T', "-"},
-    {'U', "..-"},
-    {'V', "...-"},
-    {'W', ".--"},
-    {'X', "-..-"},
-    {'Y', "-.--"},
-    {'Z', "--.."}
-};
-
-const char* findMorseCode(char character) {
-    for (const MorseEntry& entry : MORSE_TABLE) {
-        if (entry.character == character) {
-            return entry.code;
-        }
-    }
-
-    return nullptr;
+// Supplies HealthManager's "now", in the same units (milliseconds) as the
+// timeout values passed to registerParameter() below. This is the only
+// place in this file that reads a clock; HealthCore and HealthManager
+// never do.
+uint32_t currentTimeMs() {
+    return static_cast<uint32_t>(millis());
 }
 
-void ledOn(unsigned long durationMs) {
-    digitalWrite(LED_PIN, HIGH);
-    delay(durationMs);
-    digitalWrite(LED_PIN, LOW);
-}
+HealthManager manager(currentTimeMs);
+HealthSnapshot snapshot;
+SerialOutput serialOutput(Serial);
 
-void sendSymbol(char symbol) {
-    if (symbol == '.') {
-        ledOn(UNIT_MS);
-    } else if (symbol == '-') {
-        ledOn(3 * UNIT_MS);
-    }
-}
-
-void sendLetter(char character) {
-    const char* code = findMorseCode(character);
-
-    if (code == nullptr) {
-        return;
-    }
-
-    Serial.print(character);
-    Serial.print(" ");
-    Serial.println(code);
-
-    for (size_t i = 0; code[i] != '\0'; ++i) {
-        sendSymbol(code[i]);
-
-        if (code[i + 1] != '\0') {
-            delay(UNIT_MS);
-        }
-    }
-}
-
-void sendMessage(const char* message) {
-    Serial.println();
-    Serial.print("MESSAGE: ");
-    Serial.println(message);
-
-    for (size_t i = 0; message[i] != '\0'; ++i) {
-        const char character = message[i];
-
-        if (character == ' ') {
-            Serial.println("WORD GAP");
-            delay(7 * UNIT_MS);
-            continue;
-        }
-
-        sendLetter(character);
-
-        if (message[i + 1] != '\0' && message[i + 1] != ' ') {
-            delay(3 * UNIT_MS);
-        }
-    }
-
-    Serial.println("MESSAGE COMPLETE");
-}
+ParameterHandle tempHandle = INVALID_PARAMETER_HANDLE;
+ParameterHandle batteryHandle = INVALID_PARAMETER_HANDLE;
 
 void setup() {
     Serial.begin(115200);
     delay(500);
 
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);
-
     Serial.println();
-    Serial.println("ESP32 MORSE TEST READY");
-    Serial.println("LED_PIN: GPIO2");
-    Serial.println("MESSAGE: SOS FIIA TEST");
+    Serial.println("HEALTH FRAMEWORK INTEGRATION TEST");
+    Serial.println("HealthCore -> HealthManager -> HealthSnapshot -> SerialOutput");
+
+    // Priority::NORMAL and Priority::CRITICAL are used here rather than
+    // Priority::HIGH/Priority::LOW. HIGH/LOW's enumerator names collide
+    // with Arduino's own HIGH/LOW pin-state macros in any file that
+    // includes both Arduino.h and Priority; that is a library-level issue
+    // to be resolved separately, not something this example works around.
+    tempHandle = manager.registerParameter("TEMP", "Engine Temperature", "C", "CAN", 5000, Priority::NORMAL);
+    batteryHandle = manager.registerParameter("BAT", "Battery Voltage", "V", "ADC", 5000, Priority::CRITICAL);
+
+    // Reported once: BAT falls OLD after its 5000 ms timeout and stays OLD,
+    // since nothing reports it again below. This is a deliberate contrast
+    // with TEMP, which is re-reported every loop() and so stays FRESH for
+    // the whole run — a simple way to see both Freshness outcomes on real
+    // hardware in a single snapshot.
+    manager.report(batteryHandle, "12.8");
 }
 
 void loop() {
-    sendMessage(MESSAGE);
-    delay(3000);
+    manager.report(tempHandle, "82.4");
+
+    snapshot.capture(manager);
+
+    Serial.println();
+    Serial.println("---- Health Snapshot ----");
+    serialOutput.print(snapshot);
+
+    delay(2000);
 }
