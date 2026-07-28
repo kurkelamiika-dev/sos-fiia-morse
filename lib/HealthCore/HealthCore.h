@@ -126,6 +126,19 @@ public:
     // handle is invalid; outRecord is left unchanged in that case.
     bool get(ParameterHandle handle, HealthRecord& outRecord) const;
 
+    // Enumerates registered parameters by position rather than by handle, so
+    // callers can discover every registered parameter without already
+    // holding its handle (e.g. to build a snapshot for output). position
+    // ranges over [0, count()). Returns false, leaving outHandle/outRecord
+    // unchanged, if position >= count(). The order is internal to HealthCore
+    // and is not guaranteed to match registration order; it is stable only
+    // until the next registerParameter(), unregisterParameter(), or clear()
+    // call. Callers must still treat outHandle as opaque — this method
+    // returns handles obtained from HealthCore, it does not license
+    // constructing ParameterHandle values directly (see ParameterHandle
+    // above and docs/HealthCore_Specification.md, Section 16).
+    bool getAt(size_t position, ParameterHandle& outHandle, HealthRecord& outRecord) const;
+
     // Number of currently registered parameters.
     size_t count() const;
 

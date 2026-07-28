@@ -257,7 +257,7 @@ All length constants include the terminating null character.
 
 ---
 
-## 16. Handle Validity & Failure Behavior
+## 16. Handle Validity, Failure Behavior & Enumeration
 
 - ParameterHandle is an opaque handle. Its current implementation contains an index into
   the fixed-size internal parameter table (capacity MAX_PARAMETERS); application code
@@ -275,6 +275,30 @@ All length constants include the terminating null character.
   later reused by a new registration, a handle obtained before the removal may silently
   address the new occupant of that slot. This is an accepted limitation for v0.1, not an
   oversight, and may be revisited in a future version.
+- HealthCore provides `getAt(position, outHandle, outRecord)` so callers can enumerate
+  every registered parameter without already holding its handle. No other v0.1 operation
+  can discover an unknown handle, yet enumeration is required by any consumer that must
+  act on the whole parameter table rather than one named parameter — including the
+  Section 13 future extensions (History, Logging, JSON export, MQTT export, OLED output,
+  Web UI, SD card storage) reserved for HealthCore itself, none of which are possible
+  without it.
+- `getAt()` exists to preserve handle opacity, not to work around it. Without it, a
+  caller needing to enumerate parameters could be tempted to synthesize
+  `ParameterHandle` values by walking an assumed index range from 0 upward, since the
+  current representation happens to be a table index. That would violate "application
+  code must not depend on this representation" above, and would break silently if a
+  future version added a handle generation counter (previous bullet). `getAt()` keeps
+  HealthCore as the only code that ever constructs a `ParameterHandle`; every caller, at
+  every layer, only ever receives handles that HealthCore itself produced — from
+  `registerParameter()` or from `getAt()`.
+- `position` ranges over `[0, count())`. `getAt()` returns false, leaving `outHandle` and
+  `outRecord` unchanged, if `position` is out of range.
+- The mapping from `position` to a parameter is internal to HealthCore and is not
+  guaranteed to match registration order. It is stable only until the next
+  `registerParameter()`, `unregisterParameter()`, or `clear()` call.
+- `getAt()` is purely additive: it does not change the behavior, signature, or failure
+  conditions of `registerParameter()`, `unregisterParameter()`, `report()`, `get()`,
+  `count()`, or `clear()`.
 
 ---
 
@@ -308,3 +332,22 @@ the additions are visible rather than silent:
 - HealthRecord gains an internal Has Been Updated flag to represent the UNKNOWN
   freshness case, since Last Update Time values are now opaque caller-supplied numbers
   with no reserved "never updated" sentinel (Section 4, Section 5).
+
+### Addendum (2026-07-28, during HealthManager design)
+
+While designing HealthManager on top of the frozen v0.1 API above, it became clear that
+no existing operation lets any caller enumerate the registered parameter table — every
+operation requires already holding a handle. This blocks not only HealthManager but also
+every future consumer that must act on all registered parameters rather than one named
+parameter, including the Section 13 future extensions reserved for HealthCore itself
+(History, Logging, JSON export, MQTT export, OLED output, Web UI, SD card storage). This
+addendum, made with the project owner, closes that gap without reopening the rest of the
+frozen v0.1 API:
+
+- Added `HealthCore::getAt(position, outHandle, outRecord)` (Section 16) as a purely
+  additive enumeration primitive. It changes no existing method's signature, behavior,
+  or failure conditions.
+- `getAt()` was chosen specifically to preserve `ParameterHandle` opacity rather than
+  work around it: it returns handles obtained from HealthCore's own table, the same way
+  `registerParameter()` does, so no caller at any layer ever needs to construct a
+  `ParameterHandle` itself from an assumed index representation (Section 16).

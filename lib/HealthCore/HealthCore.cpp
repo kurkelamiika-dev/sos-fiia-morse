@@ -110,6 +110,30 @@ bool HealthCore::get(ParameterHandle handle, HealthRecord& outRecord) const {
     return true;
 }
 
+bool HealthCore::getAt(size_t position, ParameterHandle& outHandle, HealthRecord& outRecord) const {
+    if (position >= count_) {
+        return false;
+    }
+
+    size_t seen = 0;
+
+    for (size_t i = 0; i < MAX_PARAMETERS; ++i) {
+        if (!occupied_[i]) {
+            continue;
+        }
+
+        if (seen == position) {
+            outHandle = ParameterHandle{static_cast<int>(i)};
+            outRecord = records_[i];
+            return true;
+        }
+
+        ++seen;
+    }
+
+    return false;
+}
+
 size_t HealthCore::count() const {
     return count_;
 }

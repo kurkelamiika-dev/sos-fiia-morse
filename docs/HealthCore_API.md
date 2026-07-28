@@ -115,6 +115,29 @@ was valid.
 
 ---
 
+## getAt()
+
+Enumerates registered parameters by position rather than by handle.
+
+Returns success/failure indicating whether position was in range. On success, fills the
+supplied handle and HealthRecord output parameters with the parameter at that position;
+on failure, both are left unchanged.
+
+position ranges over [0, count()). The mapping from position to a parameter is internal
+to HealthCore, is not guaranteed to match registration order, and is stable only until
+the next registerParameter(), unregisterParameter(), or clear() call.
+
+getAt() exists because no other operation lets a caller discover a parameter's handle
+without already holding it, yet enumerating every registered parameter — not just one
+named parameter — is required by any consumer that must act on the whole table, such as
+a future output module. It preserves ParameterHandle's opacity rather than requiring
+callers to work around it: getAt() returns handles obtained from HealthCore's own table,
+the same way registerParameter() does, so no caller ever needs to construct a
+ParameterHandle itself from an assumed index representation. getAt() is purely additive
+and changes no other method's signature or behavior.
+
+---
+
 ## count()
 
 Returns number of registered parameters.
@@ -173,3 +196,11 @@ based on decisions made with the project owner (see HealthCore_Specification.md,
   strings made explicit; overflow is rejected, never truncated.
 - Clarified that HealthCore never reads a clock — timestamps originate from
   HealthManager.
+
+### Addendum (2026-07-28, during HealthManager design)
+
+- Added getAt() as a purely additive enumeration primitive, so callers can discover all
+  registered parameters without already holding their handles (see
+  HealthCore_Specification.md, Section 16 for the full rationale). It preserves
+  ParameterHandle opacity — handles still only ever come from HealthCore, never
+  constructed by the caller — and changes no other method's signature or behavior.
